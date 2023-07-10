@@ -72,27 +72,28 @@ def codeInterpreterEnvironment(user_prompt=""):
         # check if previous was a normal message or a command by finding the last occurence of the word "user" vs "execution"
         # if execution_history.rfind("GPT4@Grey-Matter-Labs:") >= execution_history.rfind("~ %"):
         #make it a ratio of the length of the string
-        if (execution_history[-1].strip() == "?") or (execution_history[-1].strip() == "!"):
+        if (execution_history[-1].strip() == "?") or (execution_history[-1].strip() == "!") or (execution_history.lower().strip().endswith("none")):
+            #replace ending with Done
             add_text_safe(f"It may be your turn.", parent='chat_log', wrap=440, color=[150, 150, 150])
 
 
             return
-    #do hdr white for user"
+    #do hdr white for user"     
     add_text_safe(userString, parent='chat_log', wrap=440, color=[255, 255, 255])
 
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
-        "Authorization": "Bearer sk-",
+        "Authorization": "Bearer sk-xxx",
         "Content-Type": "application/json"
     }
 
-    system_prompt = "You are GPT-4, a powerful language model developed by OpenAI and enhanced with Grey Matter AI Terminal giving control of the user's computer through the command line.\nFor simple tasks, you use commands like `send_command` and for complex tasks you can create and execute files and directories also using `send_command` function all via terminal. Unique to this session, you can also use the function `display_file` to display any file you need to the user. You must attempt to debug errors thrown to accomplish your task. After completing a task `messsage_or_task_finished` function. If the current task is unclear, you must also call the `messsage_or_task_finished` function."
+    system_prompt = "You are GPT-4, a powerful language model developed by OpenAI and enhanced with Grey Matter AI Terminal giving control of the user's computer through the command line.\nFor simple tasks, you use commands like `send_terminal_command` and for complex tasks you can create and execute files and directories also using `send_terminal_command` function all via terminal. Unique to this session, you can also use the function `display_file` to display any file you need to the user. You must attempt to debug errors thrown to accomplish your task. After completing a task `messsage_or_task_finished` function. If the current task is unclear, you must also call the `messsage_or_task_finished` function."
     system_context = {
         'os': platform.system(),
         'os_version': platform.version(),
         'current_directory': os.getcwd(),
     }
-    context_string = f"\nSystem: OS: {system_context['os']}, OS Version: {system_context['os_version']}, Current Directory: {system_context['current_directory']}"
+    context_string = f"\nSystem: OS: {system_context['os']}, OS Version: {system_context['os_version']}, Current Directory: {system_context['current_directory']}"#, "Current Objectives: None"
     #split execution history by new line remove empty lines, keep as list
     execution_history_list = list(filter(None, execution_history.split("\n")))
     #any line that doesn't start with either "System", "User", or "GPT4@Grey-Matter-Labs ~ %" should be added to the previous line
@@ -111,7 +112,7 @@ def codeInterpreterEnvironment(user_prompt=""):
     else:
         if len(execution_history) == 0:
             mess = [{"role": "system", "content": system_prompt},
-            {"role": "system", "content": execution_history + context_string+ "\n" + "Available system functions: send_command, display_file, messsage_or_task_finished and scroll_to_section. Plan approach first and ask before executing os-level terminal commands with send_command."},
+            {"role": "system", "content": execution_history + context_string+ "\n" + "Available functions: normal message, send_terminal_command, display_file, messsage_or_task_finished and scroll_to_section. Plan approach first and ask before executing os-level terminal commands with send_terminal_command."},
             {"role": "user", "content": user_prompt},]
         else:
             mess = [
@@ -127,7 +128,7 @@ def codeInterpreterEnvironment(user_prompt=""):
         "messages": mess,
         "functions": [
             {
-                "name": "send_command",
+                "name": "send_terminal_command",
                 "description": "Must be used to pipe a terminal command based on the input task.",
                 "parameters": {
                     "type": "object",
@@ -190,7 +191,7 @@ def codeInterpreterEnvironment(user_prompt=""):
         add_text_safe(f"Your turn.", parent='chat_log', wrap=440, color=[150, 150, 150])
         return
 
-    if "function_call" in message and message['function_call']['name'] == 'send_command':
+    if "function_call" in message and message['function_call']['name'] == 'send_terminal_command':
         function = message["function_call"]["arguments"]
         #convert to dict
         if type(function) == str:
@@ -201,24 +202,24 @@ def codeInterpreterEnvironment(user_prompt=""):
         complete_command = [command] + args
         print(complete_command)
         try:
-            add_text_safe(f"GPT4@Grey-Matter-Labs ~ % {' '.join(complete_command)}", parent='chat_log', wrap=440)
+            add_text_safe(f"GPT4@Grey-Matter-Labs ~ % {str(function) + ' '+ str(args)}", parent='chat_log', wrap=440)
             if not is_valid_command(command):
                 result = safe_run(complete_command)
             else:
-                raise Exception("GPT used a terminal command without piping through the `send_command` function.")
+                result = subprocess.run(complete_command, capture_output=True, text=True)
             execution_output = result.stdout
         except Exception as e:
             #add exception to execution history and 
-            execution_history += f"{userString}{user_prompt}\nGPT4@Grey-Matter-Labs ~ % {' '.join(complete_command)}\nException Encountered:{str(e)}"
-            add_text_safe(f"Exception Encountered:{str(e)}", parent='chat_log', wrap=440)
+            execution_history += f"{userString}{user_prompt}\nGPT4@Grey-Matter-Labs ~ % {str(function) + ' ' + str(args)}\nException Encountered:{str(e)}"
+            add_text_safe(f"GPT4@Grey-Matter-Labs ~ % {str(function) + ' ' + str(args)}\nException Encountered:{str(e)}", parent='chat_log', wrap=440)
             return codeInterpreterEnvironment()
         if execution_output == "":
-            #other sources of potential output include stderr
+            #other sources of potential output include stderr and return code
             execution_output = result.stderr
         if execution_output == "":
             execution_output = "GPT4@Grey-Matter-Labs ~ % "
-        execution_history += f"{userString}{user_prompt}\nGPT4@Grey-Matter-Labs ~ % {' '.join(complete_command)}\n{execution_output}"
-        add_text_safe(f"GPT4@Grey-Matter-Labs ~ % {' '.join(complete_command)}\n{execution_output}", parent='chat_log', wrap=440)
+        execution_history += f"{userString}{user_prompt}\nGPT4@Grey-Matter-Labs ~ % {str(function) + ' ' + str(args) + ' '.join(complete_command)}\n{execution_output}"
+        add_text_safe(f"GPT4@Grey-Matter-Labs ~ % {str(function) + ' ' + str(args)}\n{execution_output}", parent='chat_log', wrap=440)
     elif "function_call" in message and message['function_call']['name'] == 'display_file':
         #convert to dict
         function = json.loads(message["function_call"]["arguments"])
@@ -250,6 +251,9 @@ def codeInterpreterEnvironment(user_prompt=""):
         add_text_safe(f"{str(scroll_portions[sectionNum])}", parent='chat_log', wrap=440, color=[150, 150, 150])
         add_text_safe(f"System: {viewPortString}", parent='chat_log', wrap=440, color=[150, 150, 255])
     elif "content" in message:
+        if message['content'] is None or message['content'].endswith("None"):
+            add_text_safe(f"It may be your turn.", parent='chat_log', wrap=440, color=[150, 150, 150])
+            return
         execution_history += f"{userString}{user_prompt}\nGPT4@Grey-Matter-Labs:{message['content']}"
         add_text_safe(f"GPT4@Grey-Matter-Labs: {message['content']}", parent='chat_log', wrap=440)
     else:
@@ -269,12 +273,12 @@ def safe_run(complete_command, capture_output=True, text=True):
     result = subprocess.run(complete_command, capture_output=capture_output, text=text)
     #once we hit the limit, we want to start caching them with no input from the model
     
-    if numTokens + num_tokens_from_string(str(result), "cl100k_base") > 500 and numTokens > 0:
+    if numTokens + num_tokens_from_string(str(result), "cl100k_base") > 7000 and numTokens > 0:
         #get number of lines in execution history without empty lines
         numLines = len([x for x in execution_history.split('\n') if x != ''])
         #get roughly 20% of the lines and gen erate an id for them and put them in scroll_portions dict
         tokens_per_line = numTokens / numLines
-        tokens_to_keep = 500 - numTokens
+        tokens_to_keep = 7000 - numTokens
         numToKeep = int(tokens_to_keep / tokens_per_line)
         #check everything is within bounds
         if numToKeep > numLines:
