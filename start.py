@@ -82,7 +82,7 @@ def codeInterpreterEnvironment(user_prompt=""):
 
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
-        "Authorization": "Bearer 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",
+        "Authorization": "Bearer sk-",
         "Content-Type": "application/json"
     }
 
